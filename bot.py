@@ -1,133 +1,95 @@
 import os
-import subprocess
 import requests
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# =======================
+# ======================
 # CONFIG
-# =======================
-TOKEN = "8775759479:AAEimWzCkeOpgwEZjIS-GHPss-YlHcvy9ew"
-GEMINI_API_KEY = "AIzaSyC0CepxjzQEQWqcvafKnSNlhis0ibHych4"
+# ======================
+API_KEY = os.getenv("AIzaSyDEn8FDaIPbs2CrGCUv_aH8vNIG5JsLJr4")
+BOT_TOKEN = os.getenv("8790150239:AAGYCslsIxXnmXNETMESzN9Xu21MKgPOKhM")
 
-BASE_DIR = os.path.join(os.getcwd(), "projects")
+URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={API_KEY}"
 
-# =======================
-# GEMINI AI (FIXED)
-# =======================
-def gemini_ai(prompt):
+
+# ======================
+# GEMINI FUNCTION
+# ======================
+def ask_gemini(prompt: str):
+    payload = {
+        "contents": [
+            {
+                "parts": [{"text": prompt}]
+            }
+        ]
+    }
+
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-
-        payload = {
-            "contents": [
-                {
-                    "parts": [{"text": prompt}]
-                }
-            ]
-        }
-
-        r = requests.post(url, json=payload)
-        data = r.json()
-
-        if "candidates" not in data:
-            return f"Gemini API error: {data}"
+        res = requests.post(URL, json=payload, timeout=30)
+        data = res.json()
 
         return data["candidates"][0]["content"]["parts"][0]["text"]
 
     except Exception as e:
-        return f"AI error: {e}"# =======================
-# PROJECT SYSTEM
-# =======================
-def create_project(name):
-    path = os.path.join(BASE_DIR, name)
-    os.makedirs(path, exist_ok=True)
+        return f"AI error: {e}"
 
-    file_path = os.path.join(path, "app.py")
 
-    code = f"""
-print("🚀 Project {name} running")
+# ======================
+# COMMANDS
+# ======================
 
-while True:
-    cmd = input("> ")
-    if cmd == "exit":
-        break
-    print("You said:", cmd)
-"""
-
-    with open(file_path, "w") as f:
-        f.write(code)
-
-    return f"Project '{name}' created."
-
-def run_project(name):
-    path = os.path.join(BASE_DIR, name, "app.py")
-
-    if not os.path.exists(path):
-        return "Project not found."
-
-    subprocess.Popen(["python3", path])
-    return f"Running {name}..."
-
-def list_projects():
-    if not os.path.exists(BASE_DIR):
-        return "No projects found."
-
-    return "\n".join(os.listdir(BASE_DIR))
-
-# =======================
-# HANDLER
-# =======================
-async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip().lower()
-
-    # CREATE
-    if text.startswith("/create"):
-        parts = text.split(" ", 1)
-        if len(parts) < 2:
-            await update.message.reply_text("Usage: /create name")
-            return
-        msg = create_project(parts[1])
-        await update.message.reply_text(msg)
-        return
-
-    # RUN
-    elif text.startswith("/run"):
-        parts = text.split(" ", 1)
-        if len(parts) < 2:
-            await update.message.reply_text("Usage: /run name")
-            return
-        msg = run_project(parts[1])
-        await update.message.reply_text(msg)
-        return
-
-    # LIST
-    elif text.startswith("/list"):
-        msg = list_projects()
-        await update.message.reply_text(msg)
-        return
-
-    # AI
-    elif text.startswith("/ai"):
-        prompt = text.replace("/ai", "", 1).strip()
-        if not prompt:
-            await update.message.reply_text("Usage: /ai prompt")
-            return
-        reply = gemini_ai(prompt)
-        await update.message.reply_text(reply)
-        return
-
-    # DEFAULT
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Commands:\n/create name\n/run name\n/list\n/ai prompt"
+        "🤖 AutoCoder Bot Online!\n\n"
+        "Commands:\n"
+        "/ai <prompt>\n"
+        "/ping\n"
+        "/help"
     )
 
-# =======================
-# START BOT
-# =======================
-app = ApplicationBuilder().token(TOKEN).build()
 
-app.add_handler(MessageHandler(filters.TEXT, handle))
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "/ai <text> - Ask AI\n"
+        "/ping - test bot\n"
+        "/info - bot info"
+    )
 
-print("🤖 AutoCoder AI Bot running...")
-app.run_polling()
+
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🏓 Pong!")
+
+
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 Bot: AutoCoder AI\n"
+        "🔥 Powered by Gemini\n"
+        "☁️ Hosted on Render"
+    )
+
+
+async def ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = " ".join(context.args)
+
+    if not prompt:
+        await update.message.reply_text("Usage: /ai hello")
+        return
+
+    reply = ask_gemini(prompt)
+    await update.message.reply_text(reply)
+
+
+# ======================
+# MAIN
+# ======================
+if __name__ == "__main__":
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("ping", ping))
+    app.add_handler(CommandHandler("info", info))
+    app.add_handler(CommandHandler("ai", ai))
+
+    print("🤖 Bot running...")
+    app.run_polling(drop_pending_updates=True)
