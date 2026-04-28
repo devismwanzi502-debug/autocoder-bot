@@ -7,7 +7,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 # CONFIG
 # ======================
 API_KEY = os.getenv("AIzaSyDEn8FDaIPbs2CrGCUv_aH8vNIG5JsLJr4")
-BOT_TOKEN = os.getenv("8775759479:AAEimWzCkeOpgwEZjIS-GHPss-YlHcvy9ew")
+BOT_TOKEN = os.getenv("8615828077:AAFClxX-_JAqi7nl0dq1vYVhO6Z_4Bu_3b8")
 
 URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={API_KEY}"
 
