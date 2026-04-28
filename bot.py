@@ -1,95 +1,149 @@
 import os
+import logging
 import requests
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# ======================
-# CONFIG
-# ======================
-API_KEY = os.getenv("AIzaSyDEn8FDaIPbs2CrGCUv_aH8vNIG5JsLJr4")
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters
+)
+
+# ---------------- LOGGING ----------------
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+
+# ---------------- ENV ----------------
 BOT_TOKEN = os.getenv("8615828077:AAFClxX-_JAqi7nl0dq1vYVhO6Z_4Bu_3b8")
+GEMINI_API_KEY = os.getenv("AIzaSyDEn8FDaIPbs2CrGCUv_aH8vNIG5JsLJr4")
 
-URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={API_KEY}"
+if not BOT_TOKEN:
+    raise Exception("❌ BOT_TOKEN missing in environment variables")
 
+# ---------------- MEMORY ----------------
+memory = {}
 
-# ======================
-# GEMINI FUNCTION
-# ======================
-def ask_gemini(prompt: str):
+# ---------------- AI FUNCTION ----------------
+def ask_ai(prompt: str):
+    if not GEMINI_API_KEY:
+        return "⚠️ AI key not set."
+
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+
     payload = {
-        "contents": [
-            {
-                "parts": [{"text": prompt}]
-            }
-        ]
+        "contents": [{"parts": [{"text": prompt}]}]
     }
 
     try:
-        res = requests.post(URL, json=payload, timeout=30)
+        res = requests.post(url, json=payload, timeout=15)
         data = res.json()
-
         return data["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception:
+        return "⚠️ AI error occurred."
 
-    except Exception as e:
-        return f"AI error: {e}"
+# ---------------- MENU ----------------
+def menu_ui():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💬 Chat AI", callback_data="chat")],
+        [InlineKeyboardButton("🏓 Ping", callback_data="ping")],
+        [InlineKeyboardButton("🧹 Clear Chat", callback_data="clear")],
+        [InlineKeyboardButton("❓ Help", callback_data="help")]
+    ])
 
-
-# ======================
-# COMMANDS
-# ======================
-
+# ---------------- COMMANDS ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 AutoCoder Bot Online!\n\n"
-        "Commands:\n"
-        "/ai <prompt>\n"
-        "/ping\n"
-        "/help"
+        "🤖 Welcome to Nova AI Bot\nUse /menu to begin."
     )
 
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "/ai <text> - Ask AI\n"
-        "/ping - test bot\n"
-        "/info - bot info"
+        "📌 Main Menu:",
+        reply_markup=menu_ui()
     )
 
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📌 Commands:\n"
+        "/menu - Open menu\n"
+        "/ask <text> - Ask AI directly\n"
+        "/ping - Check bot\n"
+        "/clear - Reset chat"
+    )
 
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏓 Pong!")
+    await update.message.reply_text("🏓 Online & Running!")
 
+async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    memory[user_id] = []
+    await update.message.reply_text("🧹 Chat cleared!")
 
-async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🤖 Bot: AutoCoder AI\n"
-        "🔥 Powered by Gemini\n"
-        "☁️ Hosted on Render"
-    )
+async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = " ".join(context.args)
 
-
-async def ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    prompt = " ".join(context.args)
-
-    if not prompt:
-        await update.message.reply_text("Usage: /ai hello")
+    if not text:
+        await update.message.reply_text("⚠️ Use: /ask what is AI?")
         return
 
-    reply = ask_gemini(prompt)
+    reply = ask_ai(text)
     await update.message.reply_text(reply)
 
+# ---------------- BUTTON HANDLER ----------------
+async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-# ======================
-# MAIN
-# ======================
-if __name__ == "__main__":
+    user_id = query.from_user.id
+    data = query.data
+
+    memory.setdefault(user_id, [])
+
+    if data == "chat":
+        await query.message.reply_text("💬 Just type your message.")
+    
+    elif data == "ping":
+        await query.message.reply_text("🏓 Bot is alive!")
+
+    elif data == "clear":
+        memory[user_id] = []
+        await query.message.reply_text("🧹 Cleared!")
+
+    elif data == "help":
+        await query.message.reply_text("/menu /ask /ping /clear")
+
+# ---------------- CHAT ----------------
+async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    text = update.message.text
+
+    memory.setdefault(user_id, []).append(text)
+
+    reply = ask_ai(text)
+    await update.message.reply_text(reply)
+
+# ---------------- MAIN ----------------
+def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("menu", menu))
+    app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("ping", ping))
-    app.add_handler(CommandHandler("info", info))
-    app.add_handler(CommandHandler("ai", ai))
+    app.add_handler(CommandHandler("clear", clear))
+    app.add_handler(CommandHandler("ask", ask))
 
-    print("🤖 Bot running...")
-    app.run_polling(drop_pending_updates=True)
+    app.add_handler(CallbackQueryHandler(buttons))
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+
+    print("🚀 Nova AI Bot running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
